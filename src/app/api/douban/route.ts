@@ -1,17 +1,8 @@
 import { NextResponse } from 'next/server';
-
 import { getCacheTime } from '@/lib/config';
 import { DoubanItem, DoubanResult } from '@/lib/types';
 
-export const runtime = 'edge';
-
-const TIMEOUT_MS = 10000;
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-const DOUBAN_REFERER = 'https://movie.douban.com/';
-// 使用 Naver 图片代理，速度快且稳定
-const IMAGE_PROXY_PREFIX = 'https://search.pstatic.net/common?src=';
-
+// 定义接口
 interface DoubanApiResponse {
   subjects: Array<{
     id: string;
@@ -21,37 +12,29 @@ interface DoubanApiResponse {
   }>;
 }
 
-// 内部定义的图片处理函数，不依赖外部文件
-function fixDoubanImage(url: string): string {
-  if (!url) return '';
-  if (!url.includes('doubanio.com')) return url;
-  return `${IMAGE_PROXY_PREFIX}${url}`;
-}
+export const runtime = 'nodejs';
 
-// 内部定义的 Fetch 封装
-async function fetchUrl(url: string, isJson = true) {
+// ✅ 1. 新增：在这里直接定义 fetch 函数，不再从外部引入
+async function fetchDoubanData<T>(url: string): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
 
   const fetchOptions = {
     signal: controller.signal,
     headers: {
-      'User-Agent': USER_AGENT,
-      Referer: DOUBAN_REFERER,
-      Accept: isJson
-        ? 'application/json, text/plain, */*'
-        : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Referer': 'https://movie.douban.com/',
+      'Accept': 'application/json, text/plain, */*',
     },
   };
 
   try {
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
-      throw new Error(
-        `Douban API Error: ${response.status} ${response.statusText}`
-      );
+      throw new Error(`Douban API Error: ${response.status} ${response.statusText}`);
     }
-    return isJson ? await response.json() : await response.text();
+    return await response.json();
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
       throw new Error('Douban Request Timeout');
@@ -62,22 +45,13 @@ async function fetchUrl(url: string, isJson = true) {
   }
 }
 
-async function createResponse(list: DoubanItem[]) {
-  const response: DoubanResult = {
-    code: 200,
-    message: '获取成功',
-    list: list,
-  };
-
-  const cacheTime = await getCacheTime();
-
-  return NextResponse.json(response, {
-    headers: {
-      'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-      'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-      'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-    },
-  });
+// ✅ 2. 新增：图片代理修复函数 (Naver源)
+function fixImage(url: string) {
+  if (!url) return '';
+  // 已经是代理过的不用管
+  if (url.includes('pstatic.net')) return url;
+  // 替换/拼接代理
+  return 'https://search.pstatic.net/common?src=' + url;
 }
 
 export async function GET(request: Request) {
@@ -85,88 +59,126 @@ export async function GET(request: Request) {
 
   const type = searchParams.get('type');
   const tag = searchParams.get('tag');
-
-  const pageSizeStr = searchParams.get('pageSize');
-  const pageStartStr = searchParams.get('pageStart');
-
-  const pageSize = pageSizeStr
-    ? Math.min(Math.max(parseInt(pageSizeStr), 1), 100)
-    : 16;
-  const pageStart = pageStartStr ? Math.max(parseInt(pageStartStr), 0) : 0;
+  const pageSize = parseInt(searchParams.get('pageSize') || '16');
+  const pageStart = parseInt(searchParams.get('pageStart') || '0');
 
   if (!type || !tag) {
-    return NextResponse.json(
-      { error: 'Missing parameters: type or tag' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: '缺少必要参数: type 或 tag' }, { status: 400 });
   }
 
   if (!['tv', 'movie'].includes(type)) {
-    return NextResponse.json(
-      { error: 'Invalid type: must be tv or movie' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'type 参数必须是 tv 或 movie' }, { status: 400 });
   }
 
+  // Top250 分支处理
+  if (tag === 'top250') {
+    return handleTop250(pageStart);
+  }
+
+  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
+
   try {
-    if (tag === 'top250') {
-      return await handleTop250(pageStart);
-    } else {
-      return await handleSearchSubjects(type, tag, pageSize, pageStart);
-    }
+    // ✅ 调用上面定义的本地函数
+    const doubanData = await fetchDoubanData<DoubanApiResponse>(target);
+
+    const list: DoubanItem[] = doubanData.subjects.map((item) => ({
+      id: item.id,
+      title: item.title,
+      // ✅ 修复图片
+      poster: fixImage(item.cover),
+      rate: item.rate,
+      year: '',
+    }));
+
+    const response: DoubanResult = {
+      code: 200,
+      message: '获取成功',
+      list: list,
+    };
+
+    const cacheTime = await getCacheTime();
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        'Netlify-Vary': 'query',
+      },
+    });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('API Error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch data', details: (error as Error).message },
+      { error: '获取豆瓣数据失败', details: (error as Error).message },
       { status: 500 }
     );
   }
 }
 
-async function handleSearchSubjects(
-  type: string,
-  tag: string,
-  pageSize: number,
-  pageStart: number
-) {
-  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(
-    tag
-  )}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
-
-  const data = (await fetchUrl(target, true)) as DoubanApiResponse;
-
-  const list: DoubanItem[] = data.subjects.map((item) => ({
-    id: item.id,
-    title: item.title,
-    poster: fixDoubanImage(item.cover),
-    rate: item.rate,
-    year: '',
-  }));
-
-  return createResponse(list);
-}
-
-async function handleTop250(pageStart: number) {
+// Top250 处理逻辑
+function handleTop250(pageStart: number) {
   const target = `https://movie.douban.com/top250?start=${pageStart}&filter=`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  const html = (await fetchUrl(target, false)) as string;
+  const fetchOptions = {
+    signal: controller.signal,
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Referer': 'https://movie.douban.com/',
+      'Accept':
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    },
+  };
 
-  const moviePattern =
-    /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
+  return fetch(target, fetchOptions)
+    .then(async (fetchResponse) => {
+      clearTimeout(timeoutId);
+      if (!fetchResponse.ok) {
+        throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
+      }
 
-  const movies: DoubanItem[] = [];
-  let match;
+      const html = await fetchResponse.text();
+      const moviePattern =
+        /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
+      
+      const movies: DoubanItem[] = [];
+      let match;
 
-  while ((match = moviePattern.exec(html)) !== null) {
-    movies.push({
-      id: match[1],
-      title: match[2],
-      poster: fixDoubanImage(match[3]),
-      rate: match[4] || '',
-      year: '',
+      while ((match = moviePattern.exec(html)) !== null) {
+        movies.push({
+          id: match[1],
+          title: match[2],
+          // ✅ 修复图片
+          poster: fixImage(match[3]),
+          rate: match[4] || '',
+          year: '',
+        });
+      }
+
+      const apiResponse: DoubanResult = {
+        code: 200,
+        message: '获取成功',
+        list: movies,
+      };
+
+      const cacheTime = await getCacheTime();
+      return NextResponse.json(apiResponse, {
+        headers: {
+          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          'Netlify-Vary': 'query',
+        },
+      });
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      return NextResponse.json(
+        {
+          error: '获取豆瓣 Top250 数据失败',
+          details: (error as Error).message,
+        },
+        { status: 500 }
+      );
     });
-  }
-
-  return createResponse(movies);
 }
