@@ -9,7 +9,6 @@ const TIMEOUT_MS = 10000;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 const DOUBAN_REFERER = 'https://movie.douban.com/';
-// Naver 图片代理前缀
 const IMAGE_PROXY_PREFIX = 'https://search.pstatic.net/common?src=';
 
 interface DoubanApiResponse {
@@ -27,7 +26,6 @@ function fixDoubanImage(url: string): string {
   return `${IMAGE_PROXY_PREFIX}${url}`;
 }
 
-// ✅ 修复点 1：去掉了 isJson 后面的 ": boolean" 类型注解
 async function fetchUrl(url: string, isJson = true) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -114,7 +112,6 @@ export async function GET(request: Request) {
       return await handleSearchSubjects(type, tag, pageSize, pageStart);
     }
   } catch (error) {
-    // ✅ 修复点 2：添加忽略规则，允许在这里打印错误日志
     // eslint-disable-next-line no-console
     console.error('API Error:', error);
     return NextResponse.json(
@@ -148,4 +145,25 @@ async function handleSearchSubjects(
 }
 
 async function handleTop250(pageStart: number) {
-  const target = `https://movie.douban.
+  const target = `https://movie.douban.com/top250?start=${pageStart}&filter=`;
+
+  const html = (await fetchUrl(target, false)) as string;
+
+  const moviePattern =
+    /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
+
+  const movies: DoubanItem[] = [];
+  let match;
+
+  while ((match = moviePattern.exec(html)) !== null) {
+    movies.push({
+      id: match[1],
+      title: match[2],
+      poster: fixDoubanImage(match[3]),
+      rate: match[4] || '',
+      year: '',
+    });
+  }
+
+  return createResponse(movies);
+}
