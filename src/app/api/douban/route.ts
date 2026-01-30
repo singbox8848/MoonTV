@@ -12,15 +12,14 @@ interface DoubanApiResponse {
   }>;
 }
 
-// ✅ 修复函数：切换为 weserv.nl (Cloudflare CDN)
-// 这是一个老牌的公共图片代理，国内访问通常比 wp.com 稳定
+// ✅ 修复函数：使用百度图片下载接口作为代理
+// 原理：百度服务器去抓取豆瓣图片，然后转发给你
 function fixDoubanImage(url: string): string {
   if (!url) return '';
-  // 只要是豆瓣的图，就走 weserv 代理
+  // 只要是豆瓣的图，就走百度代理
   if (url.includes('doubanio.com')) {
-    // 移除 http:// 或 https:// 协议头，weserv 只需要域名后的部分
-    const cleanUrl = url.replace(/^https?:\/\//, '');
-    return `https://images.weserv.nl/?url=${cleanUrl}`;
+    // 百度这个接口需要完整的 url，直接拼接即可
+    return `https://image.baidu.com/search/down?url=${url}`;
   }
   return url;
 }
