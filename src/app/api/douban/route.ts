@@ -12,15 +12,15 @@ interface DoubanApiResponse {
   }>;
 }
 
-// ✅ 修复：切换为 i2.wp.com (WordPress全球节点)，比 weserv 更稳更快
+// ✅ 修复函数：切换为 weserv.nl (Cloudflare CDN)
+// 这是一个老牌的公共图片代理，国内访问通常比 wp.com 稳定
 function fixDoubanImage(url: string): string {
   if (!url) return '';
-  // 只要是豆瓣的图，就走 WordPress 代理
+  // 只要是豆瓣的图，就走 weserv 代理
   if (url.includes('doubanio.com')) {
-    // 移除 http:// 或 https:// 协议头
+    // 移除 http:// 或 https:// 协议头，weserv 只需要域名后的部分
     const cleanUrl = url.replace(/^https?:\/\//, '');
-    // 拼接成: https://i2.wp.com/img9.doubanio.com/...
-    return `https://i2.wp.com/${cleanUrl}`;
+    return `https://images.weserv.nl/?url=${cleanUrl}`;
   }
   return url;
 }
@@ -104,7 +104,7 @@ export async function GET(request: Request) {
     const list: DoubanItem[] = doubanData.subjects.map((item) => ({
       id: item.id,
       title: item.title,
-      // ✅ 修复点1：这里包裹一层修复函数
+      // ✅ 修复图片链接
       poster: fixDoubanImage(item.cover),
       rate: item.rate,
       year: '',
@@ -159,7 +159,7 @@ function handleTop250(pageStart: number) {
 
       const html = await fetchResponse.text();
 
-      // ⚠️ 原始正则保留未动，避免逻辑变更风险
+      // ⚠️ 原始正则保留未动
       const moviePattern =
         /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
       const movies: DoubanItem[] = [];
@@ -174,7 +174,7 @@ function handleTop250(pageStart: number) {
         movies.push({
           id: id,
           title: title,
-          // ✅ 修复点2：这里也包裹一层修复函数
+          // ✅ 修复图片链接
           poster: fixDoubanImage(cover),
           rate: rate,
           year: '',
