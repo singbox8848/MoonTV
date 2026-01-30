@@ -12,12 +12,20 @@ interface DoubanApiResponse {
   }>;
 }
 
-async function fetchDoubanData(url: string): Promise<DoubanApiResponse> {
-  // 添加超时控制
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+// ✅ 新增：最简单的图片修复函数，使用公共镜像绕过防盗链
+function fixDoubanImage(url: string): string {
+  if (!url) return '';
+  // 如果是豆瓣图片，走 weserv 镜像代理
+  if (url.includes('doubanio.com')) {
+    return `https://images.weserv.nl/?url=${encodeURIComponent(url.replace(/^http:/, 'https:'))}`;
+  }
+  return url;
+}
 
-  // 设置请求选项，包括信号和头部
+async function fetchDoubanData(url: string): Promise<DoubanApiResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
   const fetchOptions = {
     signal: controller.signal,
     headers: {
@@ -29,7 +37,6 @@ async function fetchDoubanData(url: string): Promise<DoubanApiResponse> {
   };
 
   try {
-    // 尝试直接访问豆瓣API
     const response = await fetch(url, fetchOptions);
     clearTimeout(timeoutId);
 
@@ -49,13 +56,11 @@ export const runtime = 'edge';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
-  // 获取参数
   const type = searchParams.get('type');
   const tag = searchParams.get('tag');
   const pageSize = parseInt(searchParams.get('pageSize') || '16');
   const pageStart = parseInt(searchParams.get('pageStart') || '0');
 
-  // 验证参数
   if (!type || !tag) {
     return NextResponse.json(
       { error: '缺少必要参数: type 或 tag' },
@@ -91,14 +96,13 @@ export async function GET(request: Request) {
   const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${tag}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
 
   try {
-    // 调用豆瓣 API
     const doubanData = await fetchDoubanData(target);
 
-    // 转换数据格式
     const list: DoubanItem[] = doubanData.subjects.map((item) => ({
       id: item.id,
       title: item.title,
-      poster: item.cover,
+      // ✅ 修复点1：这里包裹一层修复函数
+      poster: fixDoubanImage(item.cover),
       rate: item.rate,
       year: '',
     }));
@@ -128,7 +132,6 @@ export async function GET(request: Request) {
 function handleTop250(pageStart: number) {
   const target = `https://movie.douban.com/top250?start=${pageStart}&filter=`;
 
-  // 直接使用 fetch 获取 HTML 页面
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -151,10 +154,9 @@ function handleTop250(pageStart: number) {
         throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
       }
 
-      // 获取 HTML 内容
       const html = await fetchResponse.text();
 
-      // 通过正则同时捕获影片 id、标题、封面以及评分
+      // ⚠️ 原始正则保留未动，避免逻辑变更风险
       const moviePattern =
         /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
       const movies: DoubanItem[] = [];
@@ -166,13 +168,11 @@ function handleTop250(pageStart: number) {
         const cover = match[3];
         const rate = match[4] || '';
 
-        // 处理图片 URL，确保使用 HTTPS
-        const processedCover = cover.replace(/^http:/, 'https:');
-
         movies.push({
           id: id,
           title: title,
-          poster: processedCover,
+          // ✅ 修复点2：这里也包裹一层修复函数
+          poster: fixDoubanImage(cover),
           rate: rate,
           year: '',
         });
