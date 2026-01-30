@@ -12,12 +12,15 @@ interface DoubanApiResponse {
   }>;
 }
 
-// ✅ 新增：最简单的图片修复函数，使用公共镜像绕过防盗链
+// ✅ 修复：切换为 i2.wp.com (WordPress全球节点)，比 weserv 更稳更快
 function fixDoubanImage(url: string): string {
   if (!url) return '';
-  // 如果是豆瓣图片，走 weserv 镜像代理
+  // 只要是豆瓣的图，就走 WordPress 代理
   if (url.includes('doubanio.com')) {
-    return `https://images.weserv.nl/?url=${encodeURIComponent(url.replace(/^http:/, 'https:'))}`;
+    // 移除 http:// 或 https:// 协议头
+    const cleanUrl = url.replace(/^https?:\/\//, '');
+    // 拼接成: https://i2.wp.com/img9.doubanio.com/...
+    return `https://i2.wp.com/${cleanUrl}`;
   }
   return url;
 }
