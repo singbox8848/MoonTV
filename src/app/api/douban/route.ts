@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+
 import { getCacheTime } from '@/lib/config';
+import { fetchDoubanData } from '@/lib/douban';
 import { DoubanItem, DoubanResult } from '@/lib/types';
 
-// 定义接口
 interface DoubanApiResponse {
   subjects: Array<{
     id: string;
@@ -14,78 +15,59 @@ interface DoubanApiResponse {
 
 export const runtime = 'nodejs';
 
-// ✅ 1. 新增：在这里直接定义 fetch 函数，不再从外部引入
-async function fetchDoubanData<T>(url: string): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
-
-  const fetchOptions = {
-    signal: controller.signal,
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      'Referer': 'https://movie.douban.com/',
-      'Accept': 'application/json, text/plain, */*',
-    },
-  };
-
-  try {
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      throw new Error(`Douban API Error: ${response.status} ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error('Douban Request Timeout');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-// ✅ 2. 新增：图片代理修复函数 (Naver源)
-function fixImage(url: string) {
-  if (!url) return '';
-  // 已经是代理过的不用管
-  if (url.includes('pstatic.net')) return url;
-  // 替换/拼接代理
-  return 'https://search.pstatic.net/common?src=' + url;
-}
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
+  // 获取参数
   const type = searchParams.get('type');
   const tag = searchParams.get('tag');
   const pageSize = parseInt(searchParams.get('pageSize') || '16');
   const pageStart = parseInt(searchParams.get('pageStart') || '0');
 
+  // 验证参数
   if (!type || !tag) {
-    return NextResponse.json({ error: '缺少必要参数: type 或 tag' }, { status: 400 });
+    return NextResponse.json(
+      { error: '缺少必要参数: type 或 tag' },
+      { status: 400 }
+    );
   }
 
   if (!['tv', 'movie'].includes(type)) {
-    return NextResponse.json({ error: 'type 参数必须是 tv 或 movie' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'type 参数必须是 tv 或 movie' },
+      { status: 400 }
+    );
   }
 
-  // Top250 分支处理
+  if (pageSize < 1 || pageSize > 100) {
+    return NextResponse.json(
+      { error: 'pageSize 必须在 1-100 之间' },
+      { status: 400 }
+    );
+  }
+
+  if (pageStart < 0) {
+    return NextResponse.json(
+      { error: 'pageStart 不能小于 0' },
+      { status: 400 }
+    );
+  }
+
   if (tag === 'top250') {
     return handleTop250(pageStart);
   }
 
-  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${encodeURIComponent(tag)}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
+  const target = `https://movie.douban.com/j/search_subjects?type=${type}&tag=${tag}&sort=recommend&page_limit=${pageSize}&page_start=${pageStart}`;
 
   try {
-    // ✅ 调用上面定义的本地函数
+    // 调用豆瓣 API
     const doubanData = await fetchDoubanData<DoubanApiResponse>(target);
 
+    // 转换数据格式
     const list: DoubanItem[] = doubanData.subjects.map((item) => ({
       id: item.id,
       title: item.title,
-      // ✅ 修复图片
-      poster: fixImage(item.cover),
+      poster: item.cover,
       rate: item.rate,
       year: '',
     }));
@@ -113,9 +95,10 @@ export async function GET(request: Request) {
   }
 }
 
-// Top250 处理逻辑
 function handleTop250(pageStart: number) {
   const target = `https://movie.douban.com/top250?start=${pageStart}&filter=`;
+
+  // 直接使用 fetch 获取 HTML 页面
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -124,8 +107,8 @@ function handleTop250(pageStart: number) {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      'Referer': 'https://movie.douban.com/',
-      'Accept':
+      Referer: 'https://movie.douban.com/',
+      Accept:
         'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     },
   };
@@ -133,24 +116,34 @@ function handleTop250(pageStart: number) {
   return fetch(target, fetchOptions)
     .then(async (fetchResponse) => {
       clearTimeout(timeoutId);
+
       if (!fetchResponse.ok) {
         throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
       }
 
+      // 获取 HTML 内容
       const html = await fetchResponse.text();
+
+      // 通过正则同时捕获影片 id、标题、封面以及评分
       const moviePattern =
         /<div class="item">[\s\S]*?<a[^>]+href="https?:\/\/movie\.douban\.com\/subject\/(\d+)\/"[\s\S]*?<img[^>]+alt="([^"]+)"[^>]*src="([^"]+)"[\s\S]*?<span class="rating_num"[^>]*>([^<]*)<\/span>[\s\S]*?<\/div>/g;
-      
       const movies: DoubanItem[] = [];
       let match;
 
       while ((match = moviePattern.exec(html)) !== null) {
+        const id = match[1];
+        const title = match[2];
+        const cover = match[3];
+        const rate = match[4] || '';
+
+        // 处理图片 URL，确保使用 HTTPS
+        const processedCover = cover.replace(/^http:/, 'https:');
+
         movies.push({
-          id: match[1],
-          title: match[2],
-          // ✅ 修复图片
-          poster: fixImage(match[3]),
-          rate: match[4] || '',
+          id: id,
+          title: title,
+          poster: processedCover,
+          rate: rate,
           year: '',
         });
       }
