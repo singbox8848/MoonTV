@@ -15,6 +15,19 @@ import DoubanSelector from '@/components/DoubanSelector';
 import PageLayout from '@/components/PageLayout';
 import VideoCard from '@/components/VideoCard';
 
+// ✅ 新增：图片代理前缀 (韩国Naver节点，国内访问速度极快且稳定)
+const IMAGE_PROXY = 'https://search.pstatic.net/common?src=';
+
+// ✅ 新增：图片处理函数，用于自动修复防盗链
+const processImage = (url: string | undefined) => {
+  if (!url) return '';
+  // 逻辑：如果是豆瓣域名的图片，且没有包含代理前缀，则强制拼接代理
+  if (url.includes('doubanio.com') && !url.includes('pstatic.net')) {
+    return `${IMAGE_PROXY}${url}`;
+  }
+  return url;
+};
+
 function DoubanPageClient() {
   const searchParams = useSearchParams();
   const [doubanData, setDoubanData] = useState<DoubanItem[]>([]);
@@ -426,7 +439,8 @@ function DoubanPageClient() {
                     <VideoCard
                       from='douban'
                       title={item.title}
-                      poster={item.poster}
+                      // ✅ 修复：在此处调用 processImage 修复图片链接
+                      poster={processImage(item.poster)}
                       douban_id={item.id}
                       rate={item.rate}
                       year={item.year}
