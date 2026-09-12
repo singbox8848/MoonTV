@@ -43,3 +43,13 @@ sitemap-*.xml
 # generated files
 src/lib/runtime.ts
 public/manifest.json
+
+# next-pwa 在构建时生成，不应入库（否则每次构建都会产生脏改动）
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/fallback-*.js
+
+# 本地构建日志
+*.log

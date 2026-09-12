@@ -1,59 +1,40 @@
-import { BackButton } from './BackButton';
 import MobileBottomNav from './MobileBottomNav';
 import MobileHeader from './MobileHeader';
-import Sidebar from './Sidebar';
-import { ThemeToggle } from './ThemeToggle';
-import { UserMenu } from './UserMenu';
+import TopNav from './TopNav';
 
 interface PageLayoutProps {
   children: React.ReactNode;
   activePath?: string;
 }
 
+/**
+ * 全站骨架。
+ *
+ * 桌面端为顶部固定导航（Apple 官网式），移动端为顶部毛玻璃栏 + 底部标签栏，
+ * 中间内容区在两种形态下都留出导航高度的安全间距。
+ */
 const PageLayout = ({ children, activePath = '/' }: PageLayoutProps) => {
   return (
-    <div className='w-full min-h-screen'>
-      {/* 移动端头部 */}
-      <MobileHeader showBackButton={['/play'].includes(activePath)} />
+    <div className='flex min-h-screen w-full flex-col bg-parchment dark:bg-canvas'>
+      {/* 桌面端顶栏 */}
+      <TopNav activePath={activePath} />
 
-      {/* 主要布局容器 */}
-      <div className='flex md:grid md:grid-cols-[auto_1fr] w-full min-h-screen md:min-h-auto'>
-        {/* 侧边栏 - 桌面端显示，移动端隐藏 */}
-        <div className='hidden md:block'>
-          <Sidebar activePath={activePath} />
-        </div>
+      {/* 移动端顶栏 */}
+      <MobileHeader />
 
-        {/* 主内容区域 */}
-        <div className='relative min-w-0 flex-1 transition-all duration-300'>
-          {/* 桌面端左上角返回按钮 */}
-          {['/play'].includes(activePath) && (
-            <div className='absolute top-3 left-1 z-20 hidden md:flex'>
-              <BackButton />
-            </div>
-          )}
+      {/* 内容区：上方让出固定顶栏高度，下方让出移动端标签栏高度 */}
+      <main
+        className='w-full flex-1'
+        style={{
+          paddingTop: 'calc(3rem + env(safe-area-inset-top))',
+          paddingBottom: 'calc(3.25rem + env(safe-area-inset-bottom))',
+        }}
+      >
+        {children}
+      </main>
 
-          {/* 桌面端顶部按钮 */}
-          <div className='absolute top-2 right-4 z-20 hidden md:flex items-center gap-2'>
-            <ThemeToggle />
-            <UserMenu />
-          </div>
-
-          {/* 主内容 */}
-          <main
-            className='flex-1 md:min-h-0 mb-14 md:mb-0'
-            style={{
-              paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom))',
-            }}
-          >
-            {children}
-          </main>
-        </div>
-      </div>
-
-      {/* 移动端底部导航 */}
-      <div className='md:hidden'>
-        <MobileBottomNav activePath={activePath} />
-      </div>
+      {/* 移动端底部标签栏 */}
+      <MobileBottomNav activePath={activePath} />
     </div>
   );
 };

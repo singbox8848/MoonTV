@@ -29,7 +29,10 @@ RUN find ./src -type f -name "route.ts" -print0 \
 ENV DOCKER_ENV=true
 
 # For Docker builds, force dynamic rendering to read runtime environment variables.
-RUN sed -i "/const inter = Inter({ subsets: \['latin'] });/a export const dynamic = 'force-dynamic';" src/app/layout.tsx
+# 锚点改为 Inter( 调用本身，并做幂等保护：layout.tsx 里该行格式调整后不会静默失效。
+RUN grep -q "export const dynamic = 'force-dynamic';" src/app/layout.tsx || \
+  sed -i "/const inter = Inter(/a export const dynamic = 'force-dynamic';" src/app/layout.tsx && \
+  grep -q "export const dynamic = 'force-dynamic';" src/app/layout.tsx
 
 # 生成生产构建
 RUN pnpm run build

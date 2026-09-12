@@ -2,7 +2,7 @@
 
 'use client';
 
-import { ChevronRight } from 'lucide-react';
+import { Search } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 
@@ -18,54 +18,69 @@ import { DoubanItem } from '@/lib/types';
 
 import CapsuleSwitch from '@/components/CapsuleSwitch';
 import ContinueWatching from '@/components/ContinueWatching';
+import MediaGrid from '@/components/MediaGrid';
 import PageLayout from '@/components/PageLayout';
 import ScrollableRow from '@/components/ScrollableRow';
+import Section from '@/components/Section';
 import { useSite } from '@/components/SiteProvider';
+import { Modal } from '@/components/ui/Modal';
+import { PosterSkeletonRow } from '@/components/ui/Skeleton';
 import VideoCard from '@/components/VideoCard';
+
+const ROW_CARD_WIDTH = 'w-28 shrink-0 sm:w-40';
+
+type FavoriteItem = {
+  id: string;
+  source: string;
+  title: string;
+  poster: string;
+  episodes: number;
+  source_name: string;
+  currentEpisode?: number;
+  search_title?: string;
+  year?: string;
+};
+
+/** 首页的三个内容分区，避免三段几乎相同的 JSX 重复三遍 */
+const SECTIONS = [
+  {
+    key: 'movies',
+    title: '热门电影',
+    href: '/douban?type=movie',
+    type: 'movie',
+  },
+  { key: 'tv', title: '热门剧集', href: '/douban?type=tv', type: '' },
+  { key: 'show', title: '热门综艺', href: '/douban?type=show', type: '' },
+] as const;
 
 function HomeClient() {
   const [activeTab, setActiveTab] = useState<'home' | 'favorites'>('home');
-  const [hotMovies, setHotMovies] = useState<DoubanItem[]>([]);
-  const [hotTvShows, setHotTvShows] = useState<DoubanItem[]>([]);
-  const [hotVarietyShows, setHotVarietyShows] = useState<DoubanItem[]>([]);
+  const [items, setItems] = useState<Record<string, DoubanItem[]>>({
+    movies: [],
+    tv: [],
+    show: [],
+  });
   const [loading, setLoading] = useState(true);
+  const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
   const { announcement } = useSite();
-
   const [showAnnouncement, setShowAnnouncement] = useState(false);
 
-  // 检查公告弹窗状态
+  // 公告弹窗：仅当公告内容与上次确认过的不一致时弹出
   useEffect(() => {
-    if (typeof window !== 'undefined' && announcement) {
-      const hasSeenAnnouncement = localStorage.getItem('hasSeenAnnouncement');
-      if (hasSeenAnnouncement !== announcement) {
-        setShowAnnouncement(true);
-      } else {
-        setShowAnnouncement(Boolean(!hasSeenAnnouncement && announcement));
-      }
-    }
+    if (typeof window === 'undefined' || !announcement) return;
+    setShowAnnouncement(
+      localStorage.getItem('hasSeenAnnouncement') !== announcement
+    );
   }, [announcement]);
 
-  // 收藏夹数据
-  type FavoriteItem = {
-    id: string;
-    source: string;
-    title: string;
-    poster: string;
-    episodes: number;
-    source_name: string;
-    currentEpisode?: number;
-    search_title?: string;
-  };
-
-  const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
-
+  // 首页三块内容并行拉取
   useEffect(() => {
-    const fetchDoubanData = async () => {
+    let cancelled = false;
+
+    (async () => {
       try {
         setLoading(true);
-
-        // 并行获取热门电影、热门剧集和热门综艺
-        const [moviesData, tvShowsData, varietyShowsData] = await Promise.all([
+        const [movies, tv, show] = await Promise.all([
           getDoubanCategories({
             kind: 'movie',
             category: '热门',
@@ -75,70 +90,55 @@ function HomeClient() {
           getDoubanCategories({ kind: 'tv', category: 'show', type: 'show' }),
         ]);
 
-        if (moviesData.code === 200) {
-          setHotMovies(moviesData.list);
-        }
-
-        if (tvShowsData.code === 200) {
-          setHotTvShows(tvShowsData.list);
-        }
-
-        if (varietyShowsData.code === 200) {
-          setHotVarietyShows(varietyShowsData.list);
-        }
+        if (cancelled) return;
+        setItems({
+          movies: movies.code === 200 ? movies.list : [],
+          tv: tv.code === 200 ? tv.list : [],
+          show: show.code === 200 ? show.list : [],
+        });
       } catch (error) {
         console.error('获取豆瓣数据失败:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    };
+    })();
 
-    fetchDoubanData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // 处理收藏数据更新的函数
-  const updateFavoriteItems = async (allFavorites: Record<string, any>) => {
-    const allPlayRecords = await getAllPlayRecords();
-
-    // 根据保存时间排序（从近到远）
-    const sorted = Object.entries(allFavorites)
-      .sort(([, a], [, b]) => b.save_time - a.save_time)
-      .map(([key, fav]) => {
-        const plusIndex = key.indexOf('+');
-        const source = key.slice(0, plusIndex);
-        const id = key.slice(plusIndex + 1);
-
-        // 查找对应的播放记录，获取当前集数
-        const playRecord = allPlayRecords[key];
-        const currentEpisode = playRecord?.index;
-
-        return {
-          id,
-          source,
-          title: fav.title,
-          year: fav.year,
-          poster: fav.cover,
-          episodes: fav.total_episodes,
-          source_name: fav.source_name,
-          currentEpisode,
-          search_title: fav?.search_title,
-        } as FavoriteItem;
-      });
-    setFavoriteItems(sorted);
-  };
-
-  // 当切换到收藏夹时加载收藏数据
+  // 切换到收藏夹时加载收藏数据
   useEffect(() => {
     if (activeTab !== 'favorites') return;
+    let cancelled = false;
 
-    const loadFavorites = async () => {
-      const allFavorites = await getAllFavorites();
-      await updateFavoriteItems(allFavorites);
+    const updateFavoriteItems = async (allFavorites: Record<string, any>) => {
+      const allPlayRecords = await getAllPlayRecords();
+      if (cancelled) return;
+
+      const sorted = Object.entries(allFavorites)
+        .sort(([, a], [, b]) => b.save_time - a.save_time)
+        .map(([key, fav]) => {
+          const plusIndex = key.indexOf('+');
+          return {
+            id: key.slice(plusIndex + 1),
+            source: key.slice(0, plusIndex),
+            title: fav.title,
+            year: fav.year,
+            poster: fav.cover,
+            episodes: fav.total_episodes,
+            source_name: fav.source_name,
+            currentEpisode: allPlayRecords[key]?.index,
+            search_title: fav?.search_title,
+          } as FavoriteItem;
+        });
+
+      setFavoriteItems(sorted);
     };
 
-    loadFavorites();
+    getAllFavorites().then(updateFavoriteItems);
 
-    // 监听收藏更新事件
     const unsubscribe = subscribeToDataUpdates(
       'favoritesUpdated',
       (newFavorites: Record<string, any>) => {
@@ -146,19 +146,44 @@ function HomeClient() {
       }
     );
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [activeTab]);
 
-  const handleCloseAnnouncement = (announcement: string) => {
+  const closeAnnouncement = () => {
     setShowAnnouncement(false);
-    localStorage.setItem('hasSeenAnnouncement', announcement); // 记录已查看弹窗
+    if (announcement) localStorage.setItem('hasSeenAnnouncement', announcement);
   };
 
   return (
-    <PageLayout>
-      <div className='px-2 sm:px-10 py-4 sm:py-8 overflow-visible'>
-        {/* 顶部 Tab 切换 */}
-        <div className='mb-8 flex justify-center'>
+    <PageLayout activePath='/'>
+      <div className='mx-auto max-w-wide px-4 pb-16 pt-8 sm:px-8 lg:px-10 lg:pt-12'>
+        {/* Hero：苹果式大标题 + 单一主行动。
+            入场用 `animate-apple-rise`（`both` 填充 + 递增 delay）做错位浮现，
+            避免整块同时出现显得生硬。 */}
+        <div className='mb-10 flex flex-col items-center text-center sm:mb-14'>
+          <span className='animate-apple-rise mb-4 rounded-pill bg-accent/[0.1] px-3 py-1 text-[12px] font-medium text-accent'>
+            影视聚合
+          </span>
+          <h1 className='apple-headline animate-apple-rise max-w-prose text-balance [animation-delay:60ms]'>
+            找到今晚想看的那一部
+          </h1>
+          <p className='apple-body animate-apple-rise mt-4 max-w-prose text-balance [animation-delay:120ms]'>
+            聚合豆瓣高分片单与全网播放源，一处搜索，随处开播。
+          </p>
+          <Link
+            href='/search'
+            className='apple-btn-primary animate-apple-rise mt-7 px-6 py-2.5 text-[15px] [animation-delay:180ms]'
+          >
+            <Search className='h-4 w-4' />
+            开始搜索
+          </Link>
+        </div>
+
+        {/* 首页 / 收藏夹 切换 */}
+        <div className='mb-10 flex justify-center'>
           <CapsuleSwitch
             options={[
               { label: '首页', value: 'home' },
@@ -169,229 +194,93 @@ function HomeClient() {
           />
         </div>
 
-        <div className='max-w-[95%] mx-auto'>
-          {activeTab === 'favorites' ? (
-            // 收藏夹视图
-            <section className='mb-8'>
-              <div className='mb-4 flex items-center justify-between'>
-                <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  我的收藏
-                </h2>
-                {favoriteItems.length > 0 && (
-                  <button
-                    className='text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                    onClick={async () => {
-                      await clearAllFavorites();
-                      setFavoriteItems([]);
-                    }}
-                  >
-                    清空
-                  </button>
-                )}
-              </div>
-              <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
-                {favoriteItems.map((item) => (
-                  <div key={item.id + item.source} className='w-full'>
-                    <VideoCard
-                      query={item.search_title}
-                      {...item}
-                      from='favorite'
-                      type={item.episodes > 1 ? 'tv' : ''}
-                    />
-                  </div>
-                ))}
-                {favoriteItems.length === 0 && (
-                  <div className='col-span-full text-center text-gray-500 py-8 dark:text-gray-400'>
-                    暂无收藏内容
-                  </div>
-                )}
-              </div>
-            </section>
-          ) : (
-            // 首页视图
-            <>
-              {/* 继续观看 */}
-              <ContinueWatching />
-
-              {/* 热门电影 */}
-              <section className='mb-8'>
-                <div className='mb-4 flex items-center justify-between'>
-                  <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                    热门电影
-                  </h2>
-                  <Link
-                    href='/douban?type=movie'
-                    className='flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  >
-                    查看更多
-                    <ChevronRight className='w-4 h-4 ml-1' />
-                  </Link>
-                </div>
-                <ScrollableRow>
-                  {loading
-                    ? // 加载状态显示灰色占位数据
-                      Array.from({ length: 8 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
-                            <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
-                          </div>
-                          <div className='mt-2 h-4 bg-gray-200 rounded animate-pulse dark:bg-gray-800'></div>
-                        </div>
-                      ))
-                    : // 显示真实数据
-                      hotMovies.map((movie, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <VideoCard
-                            from='douban'
-                            title={movie.title}
-                            poster={movie.poster}
-                            douban_id={movie.id}
-                            rate={movie.rate}
-                            year={movie.year}
-                            type='movie'
-                          />
-                        </div>
-                      ))}
-                </ScrollableRow>
-              </section>
-
-              {/* 热门剧集 */}
-              <section className='mb-8'>
-                <div className='mb-4 flex items-center justify-between'>
-                  <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                    热门剧集
-                  </h2>
-                  <Link
-                    href='/douban?type=tv'
-                    className='flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  >
-                    查看更多
-                    <ChevronRight className='w-4 h-4 ml-1' />
-                  </Link>
-                </div>
-                <ScrollableRow>
-                  {loading
-                    ? // 加载状态显示灰色占位数据
-                      Array.from({ length: 8 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
-                            <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
-                          </div>
-                          <div className='mt-2 h-4 bg-gray-200 rounded animate-pulse dark:bg-gray-800'></div>
-                        </div>
-                      ))
-                    : // 显示真实数据
-                      hotTvShows.map((show, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <VideoCard
-                            from='douban'
-                            title={show.title}
-                            poster={show.poster}
-                            douban_id={show.id}
-                            rate={show.rate}
-                            year={show.year}
-                          />
-                        </div>
-                      ))}
-                </ScrollableRow>
-              </section>
-
-              {/* 热门综艺 */}
-              <section className='mb-8'>
-                <div className='mb-4 flex items-center justify-between'>
-                  <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                    热门综艺
-                  </h2>
-                  <Link
-                    href='/douban?type=show'
-                    className='flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  >
-                    查看更多
-                    <ChevronRight className='w-4 h-4 ml-1' />
-                  </Link>
-                </div>
-                <ScrollableRow>
-                  {loading
-                    ? // 加载状态显示灰色占位数据
-                      Array.from({ length: 8 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
-                            <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
-                          </div>
-                          <div className='mt-2 h-4 bg-gray-200 rounded animate-pulse dark:bg-gray-800'></div>
-                        </div>
-                      ))
-                    : // 显示真实数据
-                      hotVarietyShows.map((show, index) => (
-                        <div
-                          key={index}
-                          className='min-w-[96px] w-24 sm:min-w-[180px] sm:w-44'
-                        >
-                          <VideoCard
-                            from='douban'
-                            title={show.title}
-                            poster={show.poster}
-                            douban_id={show.id}
-                            rate={show.rate}
-                            year={show.year}
-                          />
-                        </div>
-                      ))}
-                </ScrollableRow>
-              </section>
-            </>
-          )}
-        </div>
-      </div>
-      {announcement && showAnnouncement && (
-        <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm dark:bg-black/70 p-4 transition-opacity duration-300 ${
-            showAnnouncement ? '' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          <div className='w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-gray-900 transform transition-all duration-300 hover:shadow-2xl'>
-            <div className='flex justify-between items-start mb-4'>
-              <h3 className='text-2xl font-bold tracking-tight text-gray-800 dark:text-white border-b border-green-500 pb-1'>
-                提示
-              </h3>
-              <button
-                onClick={() => handleCloseAnnouncement(announcement)}
-                className='text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-white transition-colors'
-                aria-label='关闭'
-              ></button>
-            </div>
-            <div className='mb-6'>
-              <div className='relative overflow-hidden rounded-lg mb-4 bg-green-50 dark:bg-green-900/20'>
-                <div className='absolute inset-y-0 left-0 w-1.5 bg-green-500 dark:bg-green-400'></div>
-                <p className='ml-4 text-gray-600 dark:text-gray-300 leading-relaxed'>
-                  {announcement}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleCloseAnnouncement(announcement)}
-              className='w-full rounded-lg bg-gradient-to-r from-green-600 to-green-700 px-4 py-3 text-white font-medium shadow-md hover:shadow-lg hover:from-green-700 hover:to-green-800 dark:from-green-600 dark:to-green-700 dark:hover:from-green-700 dark:hover:to-green-800 transition-all duration-300 transform hover:-translate-y-0.5'
+        {activeTab === 'favorites' ? (
+          <Section
+            title='我的收藏'
+            action={
+              favoriteItems.length > 0 && (
+                <button
+                  onClick={async () => {
+                    await clearAllFavorites();
+                    setFavoriteItems([]);
+                  }}
+                  className='shrink-0 text-[14px] text-ink-2 transition-colors duration-250 ease-apple hover:text-accent'
+                >
+                  清空
+                </button>
+              )
+            }
+          >
+            <MediaGrid
+              isEmpty={favoriteItems.length === 0}
+              empty='还没有收藏内容，去首页逛逛吧'
             >
-              我知道了
-            </button>
-          </div>
-        </div>
-      )}
+              {favoriteItems.map((item) => (
+                <VideoCard
+                  key={`${item.source}-${item.id}`}
+                  query={item.search_title}
+                  {...item}
+                  from='favorite'
+                  type={item.episodes > 1 ? 'tv' : ''}
+                />
+              ))}
+            </MediaGrid>
+          </Section>
+        ) : (
+          <>
+            <ContinueWatching className='!mb-14' />
+
+            {SECTIONS.map((section) => (
+              <Section
+                key={section.key}
+                title={section.title}
+                href={section.href}
+              >
+                <ScrollableRow>
+                  {loading ? (
+                    <PosterSkeletonRow count={8} />
+                  ) : (
+                    items[section.key].map((item, index) => (
+                      <div
+                        key={`${item.id}-${index}`}
+                        className={ROW_CARD_WIDTH}
+                      >
+                        <VideoCard
+                          from='douban'
+                          title={item.title}
+                          poster={item.poster}
+                          douban_id={item.id}
+                          rate={item.rate}
+                          year={item.year}
+                          type={section.type === 'movie' ? 'movie' : ''}
+                        />
+                      </div>
+                    ))
+                  )}
+                </ScrollableRow>
+              </Section>
+            ))}
+          </>
+        )}
+      </div>
+
+      <Modal
+        open={!!announcement && showAnnouncement}
+        onClose={closeAnnouncement}
+        title='公告'
+        footer={
+          <button
+            onClick={closeAnnouncement}
+            className='apple-btn-primary block w-full py-2.5'
+          >
+            我知道了
+          </button>
+        }
+      >
+        <p className='whitespace-pre-line text-[15px] leading-relaxed text-ink-2'>
+          {announcement}
+        </p>
+      </Modal>
     </PageLayout>
   );
 }
