@@ -2,20 +2,272 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   设计令牌
+   —— 全部以 "R G B" 三元组保存，方便 Tailwind 用 rgb(var(--x) / <alpha-value>)
+      生成带透明度的颜色。浅/深色主题只需切换变量，无需逐元素写 dark: 前缀。
+   ========================================================================== */
+
+:root {
+  /* 底色与层级 */
+  --c-canvas: 255 255 255;
+  --c-parchment: 245 245 247;
+  --c-surface: 255 255 255;
+  --c-surface-2: 242 242 244;
+
+  /* 文字层级 */
+  --c-ink: 29 29 31; /* #1d1d1f */
+  --c-ink-2: 110 110 115; /* #6e6e73 */
+  --c-ink-3: 134 134 139; /* #86868b */
+
+  /* 分割线：浅色为黑、深色为白 */
+  --c-hairline: 0 0 0;
+
+  /* 强调色 */
+  --c-accent: 0 113 227; /* #0071e3 */
+  --c-accent-hover: 0 119 237; /* #0077ed */
+
+  /* 毛玻璃 */
+  --glass-bg: rgba(251, 251, 253, 0.72);
+  --glass-bg-strong: rgba(251, 251, 253, 0.86);
+  --glass-border: rgba(0, 0, 0, 0.07);
+
+  /* 骨架屏 */
+  --skeleton-color: #e8e8ed;
+  --skeleton-highlight: #f5f5f7;
+  --skeleton-base: 232 232 237;
+
+  color-scheme: light;
+}
+
+.dark {
+  --c-canvas: 0 0 0;
+  --c-parchment: 0 0 0;
+  --c-surface: 29 29 31; /* #1d1d1f */
+  --c-surface-2: 44 44 46; /* #2c2c2e */
+
+  --c-ink: 245 245 247;
+  --c-ink-2: 134 134 139; /* #86868b */
+  --c-ink-3: 110 110 115;
+
+  --c-hairline: 255 255 255;
+
+  --c-accent: 41 151 255; /* #2997ff */
+  --c-accent-hover: 64 163 255;
+
+  --glass-bg: rgba(22, 22, 23, 0.7);
+  --glass-bg-strong: rgba(22, 22, 23, 0.84);
+  --glass-border: rgba(255, 255, 255, 0.1);
+
+  --skeleton-color: #1d1d1f;
+  --skeleton-highlight: #2c2c2e;
+  --skeleton-base: 29 29 31;
+
+  color-scheme: dark;
+}
+
+/* =============================================================================
+   基础层
+   ========================================================================== */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    /* 字体平滑：Apple 官网的核心观感来源之一 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.011em;
+    font-feature-settings: 'kern' 1;
+  }
+
+  /* 标题走 SF Pro Display 的紧字距，是"像 Apple"最关键的一笔 */
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    letter-spacing: -0.022em;
+  }
+
+  ::selection {
+    background: rgb(var(--c-accent) / 0.22);
+  }
+
+  /* Apple 式聚焦环：柔和的蓝色外发光，而不是生硬的 outline */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgb(var(--c-accent) / 0.28);
+    border-radius: 6px;
+  }
+
+  /* 链接默认用强调色，仅在没有自定义颜色时生效 */
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  img {
+    @apply select-none;
+  }
+}
+
+/* 滚动条：桌面端保留一条极细的 Apple 风格滚动条，移动端保持隐藏 */
+@media (min-width: 769px) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-hairline) / 0.16);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 980px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--c-hairline) / 0.28);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* =============================================================================
+   组件层
+   ========================================================================== */
+
+@layer components {
+  /* —— 毛玻璃表面（顶栏、底栏、浮层）—— */
+  .apple-glass {
+    background: var(--glass-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  .apple-glass-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: saturate(180%) blur(24px);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+  }
+
+  /* —— 卡片：细描边 + 克制的阴影，悬停时轻微上浮 —— */
+  .apple-card {
+    @apply rounded-apple-lg border border-hairline/[0.07] bg-surface shadow-apple-card transition-all duration-400 ease-apple dark:border-hairline/[0.09];
+  }
+
+  /* —— 按钮 —— */
+  .apple-btn-primary {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-pill
+      bg-accent px-5 py-[9px] text-[15px] font-medium leading-none text-white
+      transition-all duration-250 ease-apple hover:bg-accent-hover active:scale-[0.97]
+      disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .apple-btn-secondary {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-pill
+      border border-hairline/[0.14] bg-surface px-5 py-[9px] text-[15px] font-medium leading-none text-ink
+      transition-all duration-250 ease-apple hover:bg-surface-2 active:scale-[0.97]
+      disabled:cursor-not-allowed disabled:opacity-40 dark:border-hairline/[0.18];
+  }
+
+  /* —— 输入框：Apple 的圆角 + 内嵌底色 —— */
+  .apple-input {
+    @apply w-full rounded-apple-md border-0 bg-surface-2 px-4 py-3 text-[16px] text-ink placeholder:text-ink-3 transition-all duration-250 ease-apple focus:bg-surface focus:shadow-apple-focus focus:outline-none;
+  }
+
+  /* —— 图标按钮（圆形，顶栏用）—— */
+  .apple-icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-2 transition-colors duration-250 ease-apple hover:bg-hairline/[0.06] hover:text-ink;
+  }
+
+  /* —— 文字层级工具 —— */
+  .apple-headline {
+    @apply font-display text-[32px] font-semibold leading-[1.1] tracking-[-0.022em] text-ink sm:text-[40px];
+  }
+
+  .apple-title {
+    @apply font-display text-[21px] font-semibold leading-tight tracking-[-0.018em] text-ink;
+  }
+
+  .apple-body {
+    @apply text-[15px] leading-[1.5] text-ink-2;
+  }
+
+  .apple-caption {
+    @apply text-[12px] leading-tight text-ink-3;
+  }
+}
+
+/* =============================================================================
+   工具类
+   ========================================================================== */
+
 @layer utilities {
   .scrollbar-hide {
-    -ms-overflow-style: none; /* IE and Edge */
-    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   .scrollbar-hide::-webkit-scrollbar {
-    display: none; /* Chrome, Safari and Opera */
+    display: none;
+  }
+
+  /* 横向滚动的卡片行：在移动端用惯性滑动，桌面端保留滚动条隐藏 */
+  .apple-row {
+    @apply flex gap-4 overflow-x-auto scrollbar-hide py-2;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .apple-row > * {
+    scroll-snap-align: start;
+  }
+
+  /* 顶部/底部渐隐，让横向滚动不那么突兀 */
+  .apple-fade-edge-r {
+    mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 48px),
+      transparent
+    );
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-}
+/* =============================================================================
+   全局细节修正
+   ========================================================================== */
 
 html,
 body {
@@ -25,85 +277,7 @@ body {
   overscroll-behavior: none;
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-}
-
-html:not(.dark) body {
-  background: linear-gradient(
-    180deg,
-    #e6f3fb 0%,
-    #eaf3f7 18%,
-    #f7f7f3 38%,
-    #e9ecef 60%,
-    #dbe3ea 80%,
-    #d3dde6 100%
-  );
-  background-attachment: fixed;
-}
-
-/* 自定义滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(31, 41, 55, 0.1);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.3);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.5);
-}
-
-/* 视频卡片悬停效果 */
-.video-card-hover {
-  transition: transform 0.3s ease;
-}
-
-.video-card-hover:hover {
-  transform: scale(1.05);
-}
-
-/* 渐变遮罩 */
-.gradient-overlay {
-  background: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.8) 100%
-  );
-}
-
-/* 隐藏移动端（<768px）垂直滚动条 */
-@media (max-width: 767px) {
-  html,
-  body {
-    -ms-overflow-style: none; /* IE & Edge */
-    scrollbar-width: none; /* Firefox */
-  }
-
-  html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
-    display: none; /* Chrome Safari */
-  }
-}
-
-/* 隐藏所有滚动条（兼容 WebKit、Firefox、IE/Edge） */
-* {
-  -ms-overflow-style: none; /* IE & Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-*::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
-}
-
-/* View Transitions API 动画 */
+/* —— 主题切换动画（View Transitions API）—— */
 @keyframes slide-from-top {
   from {
     clip-path: polygon(0 0, 100% 0, 100% 0, 0 0);
@@ -147,20 +321,25 @@ html:not(.dark)::view-transition-new(root) {
   animation-name: slide-from-bottom;
 }
 
-/* 强制播放器内部的 video 元素高度为 100%，并保持内容完整显示 */
+/* —— 播放器 —— */
 div[data-media-provider] video {
   height: 100%;
   object-fit: contain;
 }
 
 .art-poster {
-  background-size: contain !important; /* 使图片完整展示 */
-  background-position: center center !important; /* 居中显示 */
-  background-repeat: no-repeat !important; /* 防止重复 */
-  background-color: #000 !important; /* 其余区域填充为黑色 */
+  background-size: contain !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-color: #000 !important;
 }
 
-/* 隐藏移动端竖屏时的 pip 按钮 */
+/* 播放器容器统一圆角，贴合整体卡片语言 */
+.art-video-player {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
 @media (max-width: 768px) {
   .art-control-pip {
     display: none !important;
@@ -172,5 +351,42 @@ div[data-media-provider] video {
 
   .art-control-volume {
     display: none !important;
+  }
+}
+
+/* —— 骨架屏 —— */
+@keyframes apple-shine {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.apple-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-color) 25%,
+    var(--skeleton-highlight) 50%,
+    var(--skeleton-color) 75%
+  );
+  background-size: 200% 100%;
+  animation: apple-shine 1.6s ease-in-out infinite;
+}
+
+/* —— 尊重"减少动态效果"偏好 —— */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    /* delay 也必须清零：入场动画用 `both` 填充，若只压缩 duration，
+       带延迟的元素仍会在延迟期间停留在 0%（不可见）状态 */
+    animation-delay: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

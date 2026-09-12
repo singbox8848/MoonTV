@@ -1,6 +1,12 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 interface CapsuleSwitchProps {
   options: { label: string; value: string }[];
@@ -9,6 +15,14 @@ interface CapsuleSwitchProps {
   className?: string;
 }
 
+/**
+ * Apple 分段控件（Segmented Control）。
+ *
+ * 相对原实现修正了两点：
+ * 1. 用 useLayoutEffect + ResizeObserver 精确跟随尺寸变化，不再依赖
+ *    `setTimeout(..., 0)` 猜测布局时机（窗口 resize 时指示条也不会跑偏）。
+ * 2. 指示器宽度为 0 时不再渲染，避免首帧闪现在错误位置。
+ */
 const CapsuleSwitch: React.FC<CapsuleSwitchProps> = ({
   options,
   active,
@@ -17,62 +31,56 @@ const CapsuleSwitch: React.FC<CapsuleSwitchProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [indicatorStyle, setIndicatorStyle] = useState<{
-    left: number;
-    width: number;
-  }>({ left: 0, width: 0 });
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const activeIndex = options.findIndex((opt) => opt.value === active);
 
-  // 更新指示器位置
-  const updateIndicatorPosition = () => {
-    if (
-      activeIndex >= 0 &&
-      buttonRefs.current[activeIndex] &&
-      containerRef.current
-    ) {
-      const button = buttonRefs.current[activeIndex];
-      const container = containerRef.current;
-      if (button && container) {
-        const buttonRect = button.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
+  const updateIndicator = useCallback(() => {
+    const container = containerRef.current;
+    const button = activeIndex >= 0 ? buttonRefs.current[activeIndex] : null;
+    if (!container || !button || button.offsetWidth === 0) return;
 
-        if (buttonRect.width > 0) {
-          setIndicatorStyle({
-            left: buttonRect.left - containerRect.left,
-            width: buttonRect.width,
-          });
-        }
-      }
-    }
-  };
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
 
-  // 组件挂载时立即计算初始位置
-  useEffect(() => {
-    const timeoutId = setTimeout(updateIndicatorPosition, 0);
-    return () => clearTimeout(timeoutId);
-  }, []);
-
-  // 监听选中项变化
-  useEffect(() => {
-    const timeoutId = setTimeout(updateIndicatorPosition, 0);
-    return () => clearTimeout(timeoutId);
+    setIndicator({
+      left: buttonRect.left - containerRect.left,
+      width: buttonRect.width,
+    });
   }, [activeIndex]);
+
+  // 布局阶段同步测量，避免首帧闪烁
+  useLayoutEffect(() => {
+    updateIndicator();
+  }, [updateIndicator, options.length]);
+
+  // 容器尺寸变化（窗口缩放、字体加载）时重新测量
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(updateIndicator);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [updateIndicator]);
 
   return (
     <div
       ref={containerRef}
-      className={`relative inline-flex bg-gray-300/80 rounded-full p-1 dark:bg-gray-700 ${
-        className || ''
-      }`}
+      role='tablist'
+      className={[
+        'relative inline-flex items-center rounded-pill bg-hairline/[0.07] p-[3px]',
+        className ?? '',
+      ].join(' ')}
     >
-      {/* 滑动的白色背景指示器 */}
-      {indicatorStyle.width > 0 && (
-        <div
-          className='absolute top-1 bottom-1 bg-white dark:bg-gray-500 rounded-full shadow-sm transition-all duration-300 ease-out'
+      {/* 滑块 */}
+      {indicator.width > 0 && (
+        <span
+          aria-hidden='true'
+          className='absolute bottom-[3px] top-[3px] rounded-pill bg-surface shadow-apple-xs transition-all duration-300 ease-apple-out dark:bg-[#636366]'
           style={{
-            left: `${indicatorStyle.left}px`,
-            width: `${indicatorStyle.width}px`,
+            left: indicator.left,
+            width: indicator.width,
           }}
         />
       )}
@@ -85,12 +93,14 @@ const CapsuleSwitch: React.FC<CapsuleSwitchProps> = ({
             ref={(el) => {
               buttonRefs.current[index] = el;
             }}
+            role='tab'
+            aria-selected={isActive}
             onClick={() => onChange(opt.value)}
-            className={`relative z-10 w-16 px-3 py-1 text-xs sm:w-20 sm:py-2 sm:text-sm rounded-full font-medium transition-all duration-200 cursor-pointer ${
-              isActive
-                ? 'text-gray-900 dark:text-gray-100'
-                : 'text-gray-700 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
-            }`}
+            className={[
+              'relative z-10 rounded-pill px-4 py-1.5 text-[13px] font-medium',
+              'transition-colors duration-250 ease-apple',
+              isActive ? 'text-ink' : 'text-ink-2 hover:text-ink',
+            ].join(' ')}
           >
             {opt.label}
           </button>

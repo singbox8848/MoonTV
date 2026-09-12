@@ -6,56 +6,58 @@ import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
+/** 顶栏在浅/深色下的实际底色，供 iOS/Android 地址栏取色 */
+const THEME_COLOR = { dark: '#161617', light: '#fbfbfd' };
+
 export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const { setTheme, resolvedTheme } = useTheme();
 
-  const setThemeColor = (theme?: string) => {
-    const meta = document.querySelector('meta[name="theme-color"]');
+  const applyThemeColor = (theme?: string) => {
+    const content = theme === 'dark' ? THEME_COLOR.dark : THEME_COLOR.light;
+    let meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
-      const meta = document.createElement('meta');
-      meta.name = 'theme-color';
-      meta.content = theme === 'dark' ? '#0c111c' : '#f9fbfe';
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
       document.head.appendChild(meta);
-    } else {
-      meta.setAttribute('content', theme === 'dark' ? '#0c111c' : '#f9fbfe');
     }
+    meta.setAttribute('content', content);
   };
 
   useEffect(() => {
     setMounted(true);
-    setThemeColor(resolvedTheme);
+    applyThemeColor(resolvedTheme);
   }, []);
 
-  if (!mounted) {
-    // 渲染一个占位符以避免布局偏移
-    return <div className='w-10 h-10' />;
-  }
+  // 渲染占位以保持顶栏布局稳定，避免水合前后跳动
+  if (!mounted) return <div className='h-9 w-9' />;
+
+  const isDark = resolvedTheme === 'dark';
 
   const toggleTheme = () => {
-    // 检查浏览器是否支持 View Transitions API
-    const targetTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
-    setThemeColor(targetTheme);
-    if (!(document as any).startViewTransition) {
+    const targetTheme = isDark ? 'light' : 'dark';
+    applyThemeColor(targetTheme);
+
+    const startViewTransition = (document as any).startViewTransition;
+    if (typeof startViewTransition !== 'function') {
       setTheme(targetTheme);
       return;
     }
 
-    (document as any).startViewTransition(() => {
-      setTheme(targetTheme);
-    });
+    startViewTransition.call(document, () => setTheme(targetTheme));
   };
 
   return (
     <button
       onClick={toggleTheme}
-      className='w-10 h-10 p-2 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200/50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors'
-      aria-label='Toggle theme'
+      className='apple-icon-btn'
+      aria-label={isDark ? '切换到浅色外观' : '切换到深色外观'}
+      title={isDark ? '浅色外观' : '深色外观'}
     >
-      {resolvedTheme === 'dark' ? (
-        <Sun className='w-full h-full' />
+      {isDark ? (
+        <Sun className='h-[17px] w-[17px]' />
       ) : (
-        <Moon className='w-full h-full' />
+        <Moon className='h-[17px] w-[17px]' />
       )}
     </button>
   );

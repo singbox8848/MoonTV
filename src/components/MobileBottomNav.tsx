@@ -1,11 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client';
 
-import { Clover, Film, Home, Search, Star, Tv } from 'lucide-react';
+import { Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+
+import { isNavItemActive, SEARCH_HREF, useNavItems } from '@/lib/nav';
 
 interface MobileBottomNavProps {
   /**
@@ -14,96 +13,66 @@ interface MobileBottomNavProps {
   activePath?: string;
 }
 
+/**
+ * 移动端底部标签栏：毛玻璃、均分宽度、激活项使用强调色。
+ * 首页与搜索固定在前两位，其余投屏分类由 useNavItems 提供。
+ */
 const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   const pathname = usePathname();
-
-  // 当前激活路径：优先使用传入的 activePath，否则回退到浏览器地址
   const currentActive = activePath ?? pathname;
+  const navItems = useNavItems();
 
-  const [navItems, setNavItems] = useState([
-    { icon: Home, label: '首页', href: '/' },
-    { icon: Search, label: '搜索', href: '/search' },
-    {
-      icon: Film,
-      label: '电影',
-      href: '/douban?type=movie',
-    },
-    {
-      icon: Tv,
-      label: '剧集',
-      href: '/douban?type=tv',
-    },
-    {
-      icon: Clover,
-      label: '综艺',
-      href: '/douban?type=show',
-    },
-  ]);
+  // 首页 / 搜索 为固定入口，其余为内容分类
+  const items = [
+    navItems[0],
+    { icon: Search, label: '搜索', href: SEARCH_HREF, filterType: undefined },
+    ...navItems.slice(1),
+  ].filter(Boolean);
 
-  useEffect(() => {
-    const runtimeConfig = (window as any).RUNTIME_CONFIG;
-    if (runtimeConfig?.CUSTOM_CATEGORIES?.length > 0) {
-      setNavItems((prevItems) => [
-        ...prevItems,
-        {
-          icon: Star,
-          label: '自定义',
-          href: '/douban?type=custom',
-        },
-      ]);
-    }
-  }, []);
-
-  const isActive = (href: string) => {
-    const typeMatch = href.match(/type=([^&]+)/)?.[1];
-
-    // 解码URL以进行正确的比较
-    const decodedActive = decodeURIComponent(currentActive);
-    const decodedItemHref = decodeURIComponent(href);
-
-    return (
-      decodedActive === decodedItemHref ||
-      (decodedActive.startsWith('/douban') &&
-        decodedActive.includes(`type=${typeMatch}`))
-    );
-  };
+  // 项目多于 5 个时（启用自定义分类）退化为可横向滚动
+  const scrollable = items.length > 5;
 
   return (
     <nav
-      className='md:hidden fixed left-0 right-0 z-[600] bg-white/90 backdrop-blur-xl border-t border-gray-200/50 overflow-hidden dark:bg-gray-900/80 dark:border-gray-700/50'
+      className='apple-glass-strong fixed inset-x-0 bottom-0 z-[600] border-t border-hairline/[0.08] md:hidden'
       style={{
-        /* 紧贴视口底部，同时在内部留出安全区高度 */
-        bottom: 0,
         paddingBottom: 'env(safe-area-inset-bottom)',
-        minHeight: 'calc(3.5rem + env(safe-area-inset-bottom))',
       }}
     >
-      <ul className='flex items-center overflow-x-auto scrollbar-hide'>
-        {navItems.map((item) => {
-          const active = isActive(item.href);
+      <ul
+        className={[
+          'flex items-stretch',
+          scrollable ? 'overflow-x-auto scrollbar-hide' : '',
+        ].join(' ')}
+      >
+        {items.map((item) => {
+          const active =
+            item.href === SEARCH_HREF
+              ? currentActive.startsWith('/search')
+              : isNavItemActive(item.href, currentActive);
+
           return (
             <li
               key={item.href}
-              className='flex-shrink-0'
-              style={{ width: '20vw', minWidth: '20vw' }}
+              className='flex-1 shrink-0'
+              style={scrollable ? { minWidth: '20vw' } : undefined}
             >
               <Link
                 href={item.href}
-                className='flex flex-col items-center justify-center w-full h-14 gap-1 text-xs'
+                aria-current={active ? 'page' : undefined}
+                className='flex h-[52px] flex-col items-center justify-center gap-1 transition-colors duration-250 ease-apple'
               >
                 <item.icon
-                  className={`h-6 w-6 ${
-                    active
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-500 dark:text-gray-400'
-                  }`}
+                  className={[
+                    'h-[22px] w-[22px] transition-colors duration-250 ease-apple',
+                    active ? 'text-accent' : 'text-ink-2',
+                  ].join(' ')}
                 />
                 <span
-                  className={
-                    active
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-600 dark:text-gray-300'
-                  }
+                  className={[
+                    'text-[10px] leading-none tracking-tight transition-colors duration-250 ease-apple',
+                    active ? 'font-medium text-accent' : 'text-ink-2',
+                  ].join(' ')}
                 >
                   {item.label}
                 </span>

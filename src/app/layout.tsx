@@ -12,7 +12,9 @@ import RuntimeConfig from '@/lib/runtime';
 import { SiteProvider } from '../components/SiteProvider';
 import { ThemeProvider } from '../components/ThemeProvider';
 
-const inter = Inter({ subsets: ['latin'] });
+// 自托管 Inter 仅作为 SF Pro 的跨平台回退（通过 --font-inter 注入字体栈）
+// 注意：保持单行写法 —— Dockerfile 依赖 `const inter = Inter(` 这一行做锚点注入
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 // 动态生成 metadata，支持配置更新后的标题变化
 export async function generateMetadata(): Promise<Metadata> {
@@ -29,12 +31,22 @@ export async function generateMetadata(): Promise<Metadata> {
     title: siteName,
     description: '影视聚合',
     manifest: '/manifest.json',
+    // iOS 添加到主屏幕后的外观
+    appleWebApp: {
+      capable: true,
+      title: siteName,
+      statusBarStyle: 'default',
+    },
   };
 }
 
 export const viewport: Viewport = {
-  themeColor: '#000000',
+  // 与实际顶栏底色一致；ThemeToggle 会随后续主题切换动态覆写
+  themeColor: '#fbfbfd',
   viewportFit: 'cover',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default async function RootLayout({
@@ -57,6 +69,7 @@ export default async function RootLayout({
       type: category.type,
       query: category.query,
     })) || ([] as Array<{ name: string; type: 'movie' | 'tv'; query: string }>);
+
   if (
     process.env.NEXT_PUBLIC_STORAGE_TYPE !== 'd1' &&
     process.env.NEXT_PUBLIC_STORAGE_TYPE !== 'upstash'
@@ -88,12 +101,8 @@ export default async function RootLayout({
   };
 
   return (
-    <html lang='zh-CN' suppressHydrationWarning>
+    <html lang='zh-CN' className={inter.variable} suppressHydrationWarning>
       <head>
-        <meta
-          name='viewport'
-          content='width=device-width, initial-scale=1.0, viewport-fit=cover'
-        />
         {/* 将配置序列化后直接写入脚本，浏览器端可通过 window.RUNTIME_CONFIG 获取 */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
@@ -102,9 +111,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body
-        className={`${inter.className} min-h-screen bg-white text-gray-900 dark:bg-black dark:text-gray-200`}
-      >
+      <body className='min-h-screen bg-canvas text-ink'>
         <ThemeProvider
           attribute='class'
           defaultTheme='system'
