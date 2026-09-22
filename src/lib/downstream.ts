@@ -228,13 +228,12 @@ export async function getDetailFromApi(
   const videoDetail = data.list[0];
   let episodes: string[] = [];
 
-  // 处理播放源拆分
+  // 处理播放源拆分（多线路时优先选取含 .m3u8 直链的线路，
+  // 避免取到网页分享短链线路（/share/、/play/）导致 hls.js 无法播放）
   if (videoDetail.vod_play_url) {
-    const playSources = videoDetail.vod_play_url.split('$$$');
-    if (playSources.length > 0) {
-      const mainSource = playSources[0];
-      const episodeList = mainSource.split('#');
-      episodes = episodeList
+    const parseRoute = (mainSource: string) =>
+      mainSource
+        .split('#')
         .map((ep: string) => {
           const parts = ep.split('$');
           return parts.length > 1 ? parts[1] : '';
@@ -243,6 +242,16 @@ export async function getDetailFromApi(
           (url: string) =>
             url && (url.startsWith('http://') || url.startsWith('https://'))
         );
+
+    const routes = videoDetail.vod_play_url
+      .split('$$$')
+      .map(parseRoute)
+      .filter((r: string[]) => r.length > 0);
+    if (routes.length > 0) {
+      const m3u8Route = routes.find((r: string[]) =>
+        r.some((u: string) => u.includes('.m3u8'))
+      );
+      episodes = m3u8Route || routes[0];
     }
   }
 
