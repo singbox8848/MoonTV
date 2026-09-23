@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { isNavItemActive, useNavItems } from '@/lib/nav';
 
+import OnlineBadge from './OnlineBadge';
 import { useSite } from './SiteProvider';
 import { ThemeToggle } from './ThemeToggle';
 import { UserMenu } from './UserMenu';
@@ -133,6 +134,7 @@ export default function TopNav({ activePath = '/' }: TopNavProps) {
               </div>
             </form>
 
+            <OnlineBadge variant='pill' />
             <ThemeToggle />
             <UserMenu />
           </div>

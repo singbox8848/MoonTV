@@ -1,7 +1,8 @@
 'use client';
 
-import { type LucideIcon, Clover, Film, Home, Star, Tv } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type LucideIcon, Clover, Film, Home, Tv } from 'lucide-react';
+
+import { CATEGORIES } from './categories';
 
 export interface NavItem {
   icon: LucideIcon;
@@ -11,50 +12,36 @@ export interface NavItem {
   filterType?: string;
 }
 
-const BASE_ITEMS: NavItem[] = [
-  { icon: Home, label: '首页', href: '/' },
-  {
-    icon: Film,
-    label: '电影',
-    href: '/douban?type=movie',
-    filterType: 'movie',
-  },
-  { icon: Tv, label: '剧集', href: '/douban?type=tv', filterType: 'tv' },
-  {
-    icon: Clover,
-    label: '综艺',
-    href: '/douban?type=show',
-    filterType: 'show',
-  },
-];
-
-const CUSTOM_ITEM: NavItem = {
-  icon: Star,
-  label: '自定义',
-  href: '/douban?type=custom',
-  filterType: 'custom',
+/** 注册表里的分类 key → 图标。放在这里而不是 categories.ts，避免 lib 依赖图标库。 */
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  movie: Film,
+  tv: Tv,
+  show: Clover,
 };
 
 /**
- * 导航项。原先 Sidebar 与 MobileBottomNav 各自复制了一份菜单定义和
- * 激活态判断逻辑，这里统一到一处，并补上「自定义」分类的运行时探测。
+ * 导航项。
+ *
+ * 直接由 `lib/categories.ts` 的分类注册表推导 —— 新增一个分类只需要在那里
+ * 加一条定义，顶栏与移动端底栏都会自动出现。
+ *
+ * 注：原先这里还有一段「运行时探测 CUSTOM_CATEGORIES 以追加『自定义』入口」
+ * 的逻辑。该入口在浏览页并没有对应的取数分支（`kind` 会被拼成 `custom`，
+ * 豆瓣接口直接返回 400），点进去必然是空列表，因此随本次重构一并移除；
+ * 若日后站长配置了自定义分类，应先在注册表里补一个真正的 CategoryDef。
  */
+export const BASE_ITEMS: NavItem[] = [
+  { icon: Home, label: '首页', href: '/' },
+  ...CATEGORIES.map<NavItem>((category) => ({
+    icon: CATEGORY_ICONS[category.key] ?? Film,
+    label: category.label,
+    href: `/douban?type=${category.key}`,
+    filterType: category.key,
+  })),
+];
+
 export function useNavItems(): NavItem[] {
-  const [items, setItems] = useState<NavItem[]>(BASE_ITEMS);
-
-  useEffect(() => {
-    const runtimeConfig = (
-      window as unknown as {
-        RUNTIME_CONFIG?: { CUSTOM_CATEGORIES?: unknown[] };
-      }
-    ).RUNTIME_CONFIG;
-
-    if (runtimeConfig?.CUSTOM_CATEGORIES?.length) {
-      setItems([...BASE_ITEMS, CUSTOM_ITEM]);
-    }
-  }, []);
-
-  return items;
+  return BASE_ITEMS;
 }
 
 /** 搜索是独立入口，桌面端顶栏需要单独列出 */
@@ -82,7 +69,7 @@ export function isNavItemActive(href: string, activePath: string): boolean {
   const filterType = decodedHref.match(/type=([^&]+)/)?.[1];
   if (!filterType) return false;
 
-  // 仅当路径也指向 /douban 且 type 一致时才算激活
+  // 仅当路径也指向 /douban 且 type 一致时才算激活（允许后面跟其他筛选参数）
   return (
     decodedActive.startsWith('/douban') &&
     new RegExp(`[?&]type=${filterType}(&|$)`).test(decodedActive)

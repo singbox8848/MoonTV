@@ -2,6 +2,8 @@
 
 'use client';
 
+export const runtime = 'edge';
+
 import Artplayer from 'artplayer';
 import Hls from 'hls.js';
 import {
@@ -29,11 +31,13 @@ import {
   saveSkipConfig,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { usePresenceBeat, usePresenceSnapshot } from '@/lib/presence.client';
 import { SearchResult } from '@/lib/types';
 import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 
 import { BackButton } from '@/components/BackButton';
 import EpisodeSelector from '@/components/EpisodeSelector';
+import OnlineBadge from '@/components/OnlineBadge';
 import PageLayout from '@/components/PageLayout';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
@@ -121,6 +125,21 @@ function PlayPageClient() {
   }, [needPrefer]);
   // 集数相关
   const [currentEpisodeIndex, setCurrentEpisodeIndex] = useState(0);
+
+  /**
+   * 在线心跳（观看态）。
+   *
+   * PageLayout 已经注册了「浏览态」心跳，这里再注册一条信息更完整的「观看态」，
+   * 优先级更高，会被单例合并后统一上报 —— 因此播放器所在页面既能统计全站在线
+   * 人数，也能统计「这一部正在被几个人看」。
+   */
+  usePresenceBeat('play', {
+    source: currentSource,
+    videoId: currentId,
+    title: videoTitle,
+    episode: currentEpisodeIndex + 1,
+  });
+  const { titleViewers } = usePresenceSnapshot();
 
   const currentSourceRef = useRef(currentSource);
   const currentIdRef = useRef(currentId);
@@ -1695,6 +1714,7 @@ function PlayPageClient() {
               第 {currentEpisodeIndex + 1} / {totalEpisodes} 集
             </span>
           )}
+          <OnlineBadge variant='inline' titleViewers={titleViewers} />
           <button
             onClick={handleToggleFavorite}
             aria-label={favorited ? '取消收藏' : '加入收藏'}

@@ -2,10 +2,13 @@
 
 'use client';
 
+export const runtime = 'edge';
+
 import { Search } from 'lucide-react';
 import Link from 'next/link';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 
+import { HOME_ROWS } from '@/lib/categories';
 // 客户端收藏 API
 import {
   clearAllFavorites,
@@ -19,6 +22,7 @@ import { DoubanItem } from '@/lib/types';
 import CapsuleSwitch from '@/components/CapsuleSwitch';
 import ContinueWatching from '@/components/ContinueWatching';
 import MediaGrid from '@/components/MediaGrid';
+import OnlineBadge from '@/components/OnlineBadge';
 import PageLayout from '@/components/PageLayout';
 import ScrollableRow from '@/components/ScrollableRow';
 import Section from '@/components/Section';
@@ -41,29 +45,23 @@ type FavoriteItem = {
   year?: string;
 };
 
-/** 首页的三个内容分区，避免三段几乎相同的 JSX 重复三遍 */
-const SECTIONS = [
-  {
-    key: 'movies',
-    title: '热门电影',
-    href: '/douban?type=movie',
-    type: 'movie',
-  },
-  { key: 'tv', title: '热门剧集', href: '/douban?type=tv', type: '' },
-  { key: 'show', title: '热门综艺', href: '/douban?type=show', type: '' },
-] as const;
-
 function HomeClient() {
   const [activeTab, setActiveTab] = useState<'home' | 'favorites'>('home');
-  const [items, setItems] = useState<Record<string, DoubanItem[]>>({
-    movies: [],
-    tv: [],
-    show: [],
-  });
+  const [items, setItems] = useState<Record<string, DoubanItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [favoriteItems, setFavoriteItems] = useState<FavoriteItem[]>([]);
   const { announcement } = useSite();
   const [showAnnouncement, setShowAnnouncement] = useState(false);
+
+  // 首页分区完全由分类注册表推导，不再手写三份几乎相同的请求
+  const sections = useMemo(
+    () =>
+      HOME_ROWS.map((row) => ({
+        config: row,
+        empty: [] as DoubanItem[],
+      })),
+    []
+  );
 
   // 公告弹窗：仅当公告内容与上次确认过的不一致时弹出
   useEffect(() => {
@@ -73,29 +71,30 @@ function HomeClient() {
     );
   }, [announcement]);
 
-  // 首页三块内容并行拉取
+  // 首页各分区并行拉取
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
         setLoading(true);
-        const [movies, tv, show] = await Promise.all([
-          getDoubanCategories({
-            kind: 'movie',
-            category: '热门',
-            type: '全部',
-          }),
-          getDoubanCategories({ kind: 'tv', category: 'tv', type: 'tv' }),
-          getDoubanCategories({ kind: 'tv', category: 'show', type: 'show' }),
-        ]);
+        const results = await Promise.all(
+          sections.map((section) =>
+            getDoubanCategories({
+              kind: section.config.category.kind,
+              category: section.config.category.base.category,
+              type: section.config.category.base.type,
+            }).catch(() => ({ code: 500, list: [] as DoubanItem[] }))
+          )
+        );
 
         if (cancelled) return;
-        setItems({
-          movies: movies.code === 200 ? movies.list : [],
-          tv: tv.code === 200 ? tv.list : [],
-          show: show.code === 200 ? show.list : [],
+        const next: Record<string, DoubanItem[]> = {};
+        sections.forEach((section, index) => {
+          const result = results[index];
+          next[section.config.key] = result.code === 200 ? result.list : [];
         });
+        setItems(next);
       } catch (error) {
         console.error('获取豆瓣数据失败:', error);
       } finally {
@@ -106,7 +105,7 @@ function HomeClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sections]);
 
   // 切换到收藏夹时加载收藏数据
   useEffect(() => {
@@ -173,13 +172,29 @@ function HomeClient() {
           <p className='apple-body animate-apple-rise mt-4 max-w-prose text-balance [animation-delay:120ms]'>
             聚合豆瓣高分片单与全网播放源，一处搜索，随处开播。
           </p>
-          <Link
-            href='/search'
-            className='apple-btn-primary animate-apple-rise mt-7 px-6 py-2.5 text-[15px] [animation-delay:180ms]'
-          >
-            <Search className='h-4 w-4' />
-            开始搜索
-          </Link>
+
+          <div className='animate-apple-rise mt-7 flex flex-wrap items-center justify-center gap-3 [animation-delay:180ms]'>
+            <Link
+              href='/search'
+              className='apple-btn-primary px-6 py-2.5 text-[15px]'
+            >
+              <Search className='h-4 w-4' />
+              开始搜索
+            </Link>
+            <Link
+              href={HOME_ROWS[0].href}
+              className='apple-btn-secondary px-6 py-2.5 text-[15px]'
+            >
+              按分类逛
+            </Link>
+          </div>
+
+          {/* 实时在线人数 */}
+          <OnlineBadge
+            variant='inline'
+            withPlaying
+            className='animate-apple-rise mt-6 [animation-delay:240ms]'
+          />
         </div>
 
         {/* 首页 / 收藏夹 切换 */}
@@ -230,32 +245,38 @@ function HomeClient() {
           <>
             <ContinueWatching className='!mb-14' />
 
-            {SECTIONS.map((section) => (
+            {sections.map((section) => (
               <Section
-                key={section.key}
-                title={section.title}
-                href={section.href}
+                key={section.config.key}
+                title={section.config.title}
+                href={section.config.href}
               >
                 <ScrollableRow>
                   {loading ? (
                     <PosterSkeletonRow count={8} />
                   ) : (
-                    items[section.key].map((item, index) => (
-                      <div
-                        key={`${item.id}-${index}`}
-                        className={ROW_CARD_WIDTH}
-                      >
-                        <VideoCard
-                          from='douban'
-                          title={item.title}
-                          poster={item.poster}
-                          douban_id={item.id}
-                          rate={item.rate}
-                          year={item.year}
-                          type={section.type === 'movie' ? 'movie' : ''}
-                        />
-                      </div>
-                    ))
+                    (items[section.config.key] ?? section.empty).map(
+                      (item, index) => (
+                        <div
+                          key={`${item.id}-${index}`}
+                          className={ROW_CARD_WIDTH}
+                        >
+                          <VideoCard
+                            from='douban'
+                            title={item.title}
+                            poster={item.poster}
+                            douban_id={item.id}
+                            rate={item.rate}
+                            year={item.year}
+                            type={
+                              section.config.category.kind === 'movie'
+                                ? 'movie'
+                                : ''
+                            }
+                          />
+                        </div>
+                      )
+                    )
                   )}
                 </ScrollableRow>
               </Section>

@@ -53,3 +53,7 @@ public/fallback-*.js
 
 # 本地构建日志
 *.log
+
+# wrangler / 构建缓存与临时文件
+/.wrangler/
+/_tmp_*

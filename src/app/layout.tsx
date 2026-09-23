@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export const runtime = 'edge';
+
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 
