@@ -101,19 +101,22 @@ function regex(name, pattern, replacement, marker) {
   log.push(`  ✓ 已应用：${name}`);
 }
 
-// —— 第 1 组：Windows spawn（非必需） ——
+// —— 第 1 组：Windows spawn（非必需，Linux 上匹配不到也无所谓） ——
+// 上游原文：
+//   spawn(pm.name, ["add", "vercel", "-D"]);
+//   spawn(spawnCmd.cmd, spawnCmd.cmdArgs);
 literal(
   'spawn 补 shell:true（vercel install）',
-  '["add", "vercel", "-D"], {',
-  '["add", "vercel", "-D"], { shell: true, ',
-  '["add", "vercel", "-D"], { shell: true'
+  '(pm.name, ["add", "vercel", "-D"]);',
+  '(pm.name, ["add", "vercel", "-D"], { shell: true });',
+  '(pm.name, ["add", "vercel", "-D"], { shell: true })'
 );
 
 literal(
   'spawn 补 shell:true（spawnCmd）',
-  'spawnCmd.cmdArgs, {',
-  'spawnCmd.cmdArgs, { shell: true, ',
-  'spawnCmd.cmdArgs, { shell: true'
+  'spawnCmd.cmdArgs);',
+  'spawnCmd.cmdArgs, { shell: true });',
+  'spawnCmd.cmdArgs, { shell: true })'
 );
 
 // —— 第 2 组：servedPath（必需，缺失即构建失败） ——
@@ -149,9 +152,9 @@ const hardChecks = [
 const softChecks = [
   [
     'spawn shell:true',
-    after.includes('["add", "vercel", "-D"], { shell: true'),
+    after.includes('(pm.name, ["add", "vercel", "-D"], { shell: true })'),
   ],
-  ['spawnCmd shell:true', after.includes('spawnCmd.cmdArgs, { shell: true')],
+  ['spawnCmd shell:true', after.includes('spawnCmd.cmdArgs, { shell: true })')],
 ];
 
 console.log('');
