@@ -150,6 +150,54 @@
       "api": "https://lbapi9.com/api.php/provide/vod/at/json",
       "name": "AV-乐播资源",
       "detail": "https://lbapi9.com"
+    },
+    "uku": {
+      "api": "https://api.ukuapi88.com/api.php/provide/vod",
+      "name": "U酷资源88"
+    },
+    "maoyan": {
+      "api": "https://api.maoyanapi.top/api.php/provide/vod",
+      "name": "猫眼资源"
+    },
+    "youzhi": {
+      "api": "https://api.yyzy-tv.vip/inc/apijson.php",
+      "name": "优质影视"
+    },
+    "xigua": {
+      "api": "https://caiji.xgzyapi.com/api.php/provide/vod/from/xiguam3u8/at/json",
+      "name": "西瓜影视"
+    },
+    "miaobo": {
+      "api": "https://api.zeqaht.com/api.php/provide/vod",
+      "name": "秒播资源"
+    },
+    "AV26": {
+      "api": "https://jkunzyapi.com/api.php/provide/vod",
+      "name": "AV-jkun资源"
+    },
+    "AV27": {
+      "api": "https://apidanaizi.com/api.php/provide/vod/?ac=list",
+      "name": "AV-红桃视频"
+    },
+    "AV28": {
+      "api": "https://apilsbzy1.com/api.php/provide/vod",
+      "name": "AV-lsb资源"
+    },
+    "AV29": {
+      "api": "https://155api.com/api.php/provide/vod",
+      "name": "AV-155資源"
+    },
+    "AV30": {
+      "api": "https://api.ddapi.cc/api.php/provide/vod/at/json",
+      "name": "AV-滴滴资源"
+    },
+    "AV31": {
+      "api": "https://fqzy.me/api.php/provide/vod",
+      "name": "AV-18+蕃茄"
+    },
+    "AV32": {
+      "api": "https://thzy1.me/api.php/provide/vod",
+      "name": "AV-桃花资源"
     }
   }
 }
